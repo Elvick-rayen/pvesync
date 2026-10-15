@@ -1,0 +1,4 @@
+# Runtime dependencies. On Proxmox, install.sh uses the Debian packages
+# python3-requests and python3-yaml instead (no pip, nothing outside apt).
+requests>=2.25
+PyYAML>=5.4

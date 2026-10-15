@@ -1,0 +1,70 @@
+# netbox-pve-sync configuration
+# Installed as /etc/netbox-pve-sync/config.yaml (mode 0640, root:netbox-pve-sync).
+#
+# Secrets are NOT written here. "${NAME}" is replaced with the value of NAME from
+# the environment or from /etc/netbox-pve-sync/secrets.env (see .env.example).
+# Usually only the three marked lines differ between Proxmox environments.
+
+netbox:
+  url: "http://192.168.1.218:8000"          # <-- your NetBox
+  token: "${NETBOX_API_TOKEN}"
+  cluster: "PVE-Cyprus"                     # <-- must already exist in NetBox (never auto-created)
+  verify_ssl: true                          # only matters for https:// URLs
+  # ca_bundle: /etc/netbox-pve-sync/netbox-ca.pem
+  timeout: 15s
+  # vrf: null                               # NetBox VRF for VM IPs; unset = global table
+  # tag: netbox-pve-sync                    # tag that marks objects managed by this agent
+
+proxmox:
+  api_url: "https://127.0.0.1:8006"         # the local node's API
+  token_id: "netbox-sync@pve!agent-pve1"    # <-- written by install.sh (one token per node)
+  token_secret: "${PVE_TOKEN_SECRET}"
+  verify_ssl: true                          # install.sh copies the cluster CA so this works
+  ca_bundle: /etc/netbox-pve-sync/pve-root-ca.pem
+  timeout: 15s
+  leader_election: true                     # in a cluster only one node's agent is active
+  # agent_nodes: [pve1, pve2]               # set if the agent is NOT installed on every node
+
+sync:
+  # source_id: "PVE-Cyprus"                 # ownership marker; defaults to netbox.cluster
+  interface_name: eth0
+  event_poll_interval: 5s                   # how often the Proxmox task log/VM list is checked
+  local_check_interval: 10m                 # Proxmox-only re-check (guest IP changes)
+  reconciliation_interval: 6h               # full Proxmox <-> NetBox comparison
+  reconcile_on_startup: true
+  include_templates: false
+  exclude_vmids: []                         # e.g. [9000, 9001]
+  exclude_pve_tags: []                      # Proxmox tags, e.g. ["no-netbox"]
+  adopt_existing: false                     # take over unmanaged NetBox VMs with the same name
+  claim_unassigned_ips: true                # use an existing *unassigned* NetBox IP instead of creating one
+  ip_cleanup_policy: delete_managed         # or "unassign"; see README "IP addresses"
+  max_deletions_per_run: 10                 # safety limit for reconciliation
+  include_efi_tpm_disks: false
+
+retry:
+  initial_delay: 5s
+  max_delay: 1h
+  multiplier: 2
+  jitter: 0.1
+
+guest_agent:
+  ip_wait_initial_delay: 30s                # new/started VM without IP: first re-check
+  ip_wait_max_delay: 15m                    # ... backing off up to this
+  ip_wait_timeout: 24h                      # then only local_check_interval keeps looking
+
+ip_selection:
+  # Rules are applied in this order; see README "How the management IP is chosen".
+  # exclude_interfaces / exclude_networks replace the built-in defaults when set.
+  # exclude_interfaces: ["lo", "docker*", "br-*", "veth*", "cni*", "flannel*", "cali*", "tun*", "wg*"]
+  # exclude_networks: ["127.0.0.0/8", "169.254.0.0/16", "172.17.0.0/16"]
+  prefer_networks: []                       # e.g. ["192.168.1.0/24"]
+  prefer_interfaces: []                     # e.g. ["eth0", "ens18"]
+  prefer_pve_mac: true
+  require_pve_mac: false
+
+logging:
+  level: INFO                               # DEBUG shows every NetBox call
+  format: text                              # or json
+
+state:
+  path: /var/lib/netbox-pve-sync/state.db

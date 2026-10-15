@@ -1,0 +1,43 @@
+# Secrets and local configuration - never commit these
+.env
+*.env
+!.env.example
+*.secret
+*.secrets
+secrets*
+credentials*
+*.tok
+*.token
+config.yaml
+config.local.yaml
+*.local.yaml
+
+# Local state, databases, logs
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.log
+logs/
+
+# Certificates / keys
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
