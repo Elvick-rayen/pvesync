@@ -9,6 +9,7 @@ netbox:
   url: "http://192.168.1.218:8000"          # <-- your NetBox
   token: "${NETBOX_API_TOKEN}"
   cluster: "PVE-Cyprus"                     # <-- must already exist in NetBox (never auto-created)
+  site: "inmind.ai"                         # NetBox site set on every VM (name or slug; must exist). Remove to leave sites alone
   verify_ssl: true                          # only matters for https:// URLs
   # ca_bundle: /etc/netbox-pve-sync/netbox-ca.pem
   timeout: 15s
@@ -40,6 +41,7 @@ sync:
   ip_cleanup_policy: delete_managed         # or "unassign"; see README "IP addresses"
   max_deletions_per_run: 10                 # safety limit for reconciliation
   include_efi_tpm_disks: false
+  sync_status: true                         # NetBox status follows power state: running -> Active, stopped -> Offline
 
 retry:
   initial_delay: 5s

@@ -30,6 +30,7 @@ SRC_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 NETBOX_URL=""
 NETBOX_CLUSTER=""
+NETBOX_SITE=""
 START=ask          # ask | yes | no
 SKIP_PVE_TOKEN=0
 FORCE=0
@@ -40,6 +41,7 @@ Usage: ./install.sh [options]
 
   --netbox-url URL      NetBox URL, e.g. http://192.168.1.218:8000 (first install)
   --cluster NAME        NetBox cluster of this Proxmox environment, e.g. PVE-Cyprus
+  --site NAME           NetBox site set on every VM, e.g. inmind.ai (must exist in NetBox)
   --start               start/restart the service at the end without asking
   --no-start            do not start the service (default when not interactive)
   --skip-pve-token      do not create the Proxmox user/role/token (configure it yourself)
@@ -55,6 +57,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --netbox-url) NETBOX_URL=${2:?}; shift 2 ;;
         --cluster) NETBOX_CLUSTER=${2:?}; shift 2 ;;
+        --site) NETBOX_SITE=${2:?}; shift 2 ;;
         --start) START=yes; shift ;;
         --no-start) START=no; shift ;;
         --skip-pve-token) SKIP_PVE_TOKEN=1; shift ;;
@@ -85,8 +88,10 @@ for line in lines:
         line = f"{m.group(1)}{key}: {value}"
         done = True
     out.append(line)
-if not done:
-    raise SystemExit(f"could not set {section}.{key} in {path}")
+if not done:  # key missing (e.g. a config from an older version): add it right under the section
+    if f"{section}:" not in out:
+        raise SystemExit(f"could not set {section}.{key} in {path}")
+    out.insert(out.index(f"{section}:") + 1, f"  {key}: {value}")
 open(path, "w", encoding="utf-8").write("\n".join(out))
 PY
 }
@@ -182,6 +187,7 @@ chmod 0640 "$CONF_DIR/config.yaml" "$CONF_DIR/secrets.env"
 
 if [ -n "$NETBOX_URL" ]; then yaml_set "$CONF_DIR/config.yaml" netbox url "\"$NETBOX_URL\""; fi
 if [ -n "$NETBOX_CLUSTER" ]; then yaml_set "$CONF_DIR/config.yaml" netbox cluster "\"$NETBOX_CLUSTER\""; fi
+if [ -n "$NETBOX_SITE" ]; then yaml_set "$CONF_DIR/config.yaml" netbox site "\"$NETBOX_SITE\""; fi
 if [ "$FIRST_INSTALL" = 1 ] && interactive; then
     if [ -z "$NETBOX_URL" ]; then
         read -r -p "    NetBox URL [http://192.168.1.218:8000]: " NETBOX_URL

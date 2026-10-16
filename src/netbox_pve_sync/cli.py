@@ -18,7 +18,7 @@ from .discovery import discover_vm, is_eligible
 from .errors import ApiError, AuthenticationError, ConfigError, FatalStartupError, SyncError, TransientApiError
 from .logging_setup import mask_secret, setup_logging
 from .netbox.client import NetBoxClient
-from .netbox.setup import ensure_prerequisites, missing_prerequisites
+from .netbox.setup import cluster_site_id, ensure_prerequisites, missing_prerequisites
 from .proxmox.client import ProxmoxClient
 from .service import ReconcileReport, SyncService
 from .state import StateStore
@@ -84,6 +84,7 @@ def cmd_test_connection(config: Config, args: argparse.Namespace) -> int:
     print(f"  NetBox URL:      {config.netbox.url}")
     print(f"  NetBox token:    {mask_secret(config.netbox.token)}")
     print(f"  NetBox cluster:  {config.netbox.cluster}")
+    print(f"  NetBox site:     {config.netbox.site or '(not set)'}")
     print(f"  Source id:       {config.sync.source_id}")
     print(f"  Proxmox API:     {config.proxmox.api_url} (verify TLS: {config.proxmox.verify_ssl})")
     print(f"  Proxmox token:   {config.proxmox.token_id} / {mask_secret(config.proxmox.token_secret)}")
@@ -125,6 +126,18 @@ def cmd_test_connection(config: Config, args: argparse.Namespace) -> int:
             print(f"[FAIL] NetBox cluster '{config.netbox.cluster}' does not exist (create it in NetBox first)")
         else:
             print(f"[ OK ] NetBox cluster '{config.netbox.cluster}' exists (id {cluster['id']})")
+        if config.netbox.site:
+            site = nb.site(config.netbox.site)
+            pinned = cluster_site_id(cluster) if cluster else None
+            if site is None:
+                ok = False
+                print(f"[FAIL] NetBox site '{config.netbox.site}' does not exist (netbox.site)")
+            elif pinned is not None and pinned != site["id"]:
+                ok = False
+                print(f"[FAIL] NetBox cluster '{config.netbox.cluster}' is assigned to another site than "
+                      f"'{config.netbox.site}'; NetBox would reject the VMs")
+            else:
+                print(f"[ OK ] NetBox site '{config.netbox.site}' exists (id {site['id']})")
         problems = missing_prerequisites(nb, config.netbox.tag)
         if problems:
             ok = False

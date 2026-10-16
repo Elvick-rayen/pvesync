@@ -39,6 +39,7 @@ EP_CLUSTERS = "/api/virtualization/clusters/"
 EP_VM_INTERFACES = "/api/virtualization/interfaces/"
 EP_IPS = "/api/ipam/ip-addresses/"
 EP_VRFS = "/api/ipam/vrfs/"
+EP_SITES = "/api/dcim/sites/"
 EP_TAGS = "/api/extras/tags/"
 EP_CUSTOM_FIELDS = "/api/extras/custom-fields/"
 VMINTERFACE_TYPE = "virtualization.vminterface"
@@ -210,6 +211,10 @@ class NetBoxClient:
 
     def vrf(self, name: str) -> dict[str, Any] | None:
         return self.find_one(EP_VRFS, "VRF", name=name)
+
+    def site(self, name: str) -> dict[str, Any] | None:
+        """Look a site up by name (as shown in the UI dropdown), falling back to its slug."""
+        return self.find_one(EP_SITES, "site", name=name) or self.find_one(EP_SITES, "site", slug=name)
 
     def custom_field(self, name: str) -> dict[str, Any] | None:
         return self.find_one(EP_CUSTOM_FIELDS, "custom field", name=name)

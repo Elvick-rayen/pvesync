@@ -24,6 +24,10 @@ IP_AGENT_NOT_RUNNING = "agent_not_running"
 IP_AGENT_ERROR = "agent_error"
 IP_NONE_USABLE = "no_usable_ip"
 
+# Proxmox runtime status -> NetBox VM status. Anything else (e.g. "unknown" while
+# the VM's node is offline) leaves the NetBox status as it is.
+NETBOX_STATUS = {"running": "active", "stopped": "offline"}
+
 
 @dataclass
 class DesiredVM:
@@ -32,7 +36,7 @@ class DesiredVM:
     memory_mb: int
     vcpus: float
     disk_bytes: int
-    status: str                 # Proxmox runtime status (not synced; used for IP decisions)
+    status: str                 # Proxmox runtime status (synced as NetBox status; also used for IP decisions)
     node: str                   # needed for API calls only; never written to NetBox
     ip: IpCandidate | None
     ip_status: str
@@ -43,8 +47,13 @@ class DesiredVM:
     def fingerprint(self) -> str:
         """Hash of everything we write to NetBox. Same hash = nothing to do."""
         data = {"name": self.name, "memory": self.memory_mb, "vcpus": self.vcpus,
-                "disk": self.disk_bytes, "ip": self.ip.cidr if self.ip else None}
+                "disk": self.disk_bytes, "ip": self.ip.cidr if self.ip else None, "status": self.netbox_status}
         return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:16]
+
+    @property
+    def netbox_status(self) -> str | None:
+        """NetBox status for the Proxmox power state: running -> active, stopped -> offline."""
+        return NETBOX_STATUS.get(self.status)
 
     @property
     def waiting_for_ip(self) -> bool:

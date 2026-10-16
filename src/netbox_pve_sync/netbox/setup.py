@@ -20,7 +20,7 @@ from typing import Any
 
 from ..errors import FatalStartupError
 from ..logging_setup import get_logger, log
-from .client import EP_CUSTOM_FIELDS, EP_TAGS, NetBoxClient
+from .client import EP_CUSTOM_FIELDS, EP_TAGS, NetBoxClient, obj_id
 
 logger = get_logger("netbox.setup")
 
@@ -42,6 +42,7 @@ class NetBoxPrereqs:
     cluster_name: str
     tag_id: int
     vrf_id: int | None
+    site_id: int | None = None
 
 
 def _cf_type(cf: dict[str, Any]) -> str:
@@ -51,6 +52,15 @@ def _cf_type(cf: dict[str, Any]) -> str:
 
 def _cf_object_types(cf: dict[str, Any]) -> list[str]:
     return list(cf.get("object_types") or cf.get("content_types") or [])
+
+
+def cluster_site_id(cluster: dict[str, Any]) -> int | None:
+    """The site a cluster is assigned to: ``site`` before NetBox 4.2, ``scope`` (type dcim.site) since."""
+    if cluster.get("site"):
+        return obj_id(cluster["site"])
+    if cluster.get("scope_type") == "dcim.site":
+        return obj_id(cluster.get("scope_id") or cluster.get("scope"))
+    return None
 
 
 def missing_prerequisites(client: NetBoxClient, tag_slug: str) -> list[str]:
@@ -101,7 +111,7 @@ def ensure_prerequisites(client: NetBoxClient, tag_slug: str) -> list[str]:
 
 
 def resolve_prerequisites(client: NetBoxClient, cluster_name: str, tag_slug: str,
-                          vrf_name: str | None) -> NetBoxPrereqs:
+                          vrf_name: str | None, site_name: str | None = None) -> NetBoxPrereqs:
     """Verify everything exists; fail clearly otherwise. Never creates clusters."""
     cluster = client.cluster(cluster_name)
     if cluster is None:
@@ -120,6 +130,19 @@ def resolve_prerequisites(client: NetBoxClient, cluster_name: str, tag_slug: str
         if vrf is None:
             raise FatalStartupError(f"NetBox VRF '{vrf_name}' (netbox.vrf) does not exist")
         vrf_id = int(vrf["id"])
+    site_id = None
+    if site_name:
+        site = client.site(site_name)
+        if site is None:
+            raise FatalStartupError(f"NetBox site '{site_name}' (netbox.site) does not exist")
+        site_id = int(site["id"])
+        # NetBox rejects a VM whose site differs from the site its cluster is assigned to.
+        pinned = cluster_site_id(cluster)
+        if pinned is not None and pinned != site_id:
+            raise FatalStartupError(
+                f"NetBox cluster '{cluster_name}' is assigned to another site (id {pinned}) than "
+                f"netbox.site '{site_name}' (id {site_id}); NetBox would reject every VM. "
+                "Change the cluster's site in NetBox or fix netbox.site.")
     assert tag is not None
     return NetBoxPrereqs(cluster_id=int(cluster["id"]), cluster_name=cluster_name, tag_id=int(tag["id"]),
-                         vrf_id=vrf_id)
+                         vrf_id=vrf_id, site_id=site_id)

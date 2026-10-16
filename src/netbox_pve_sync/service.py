@@ -108,11 +108,11 @@ class SyncService:
                 f"NetBox rejected the API token ({mask_secret(self.config.netbox.token)}): invalid, expired or "
                 "without permission to view virtual machines") from exc
         self.prereqs = resolve_prerequisites(self.netbox, self.config.netbox.cluster, self.config.netbox.tag,
-                                             self.config.netbox.vrf)
+                                             self.config.netbox.vrf, self.config.netbox.site)
         self._sync = Synchronizer(self.netbox, self.config, self.prereqs)
         log(logger, logging.INFO, f"Connected to NetBox {compat.version}", netbox_version=str(compat.version),
             url=self.config.netbox.url, cluster=self.config.netbox.cluster, cluster_id=self.prereqs.cluster_id,
-            source_id=self.config.sync.source_id, disk_unit=compat.disk_unit_name,
+            source_id=self.config.sync.source_id, site=self.config.netbox.site, disk_unit=compat.disk_unit_name,
             token=mask_secret(self.config.netbox.token), rq_workers=status.get("rq-workers-running"))
         for w in warnings:
             log(logger, logging.WARNING, w)

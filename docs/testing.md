@@ -4,7 +4,7 @@
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
-.venv/bin/pytest -q          # 123 passed
+.venv/bin/pytest -q          # 134 passed
 .venv/bin/ruff check src tests
 .venv/bin/mypy src           # strict, 23 files, no issues
 ```

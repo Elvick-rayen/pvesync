@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from netbox_pve_sync.errors import ConflictError
+from netbox_pve_sync.errors import ConflictError, FatalStartupError
+from netbox_pve_sync.netbox.setup import cluster_site_id
 from netbox_pve_sync.service import SyncService
 
 from .conftest import ServiceFactory
@@ -406,3 +407,115 @@ def test_dry_run_writes_nothing(make_service: ServiceFactory, proxmox: FakeProxm
     assert kinds.count(("create", "/api/virtualization/virtual-machines/")) == 2
     assert kinds.count(("create", "/api/ipam/ip-addresses/")) == 2
     assert svc.state.fingerprint(101) is None
+
+
+# ---------------------------------------------------------------- site and power status
+def site_service(make_service: ServiceFactory, netbox: FakeNetBox, **sections: dict) -> SyncService:
+    netbox.add_site("inmind.ai")
+    svc = make_service(netbox={"site": "inmind.ai"}, **sections)
+    svc.check_netbox()
+    return svc
+
+
+def test_vm_gets_configured_site(make_service: ServiceFactory, proxmox: FakeProxmox, netbox: FakeNetBox) -> None:
+    svc = site_service(make_service, netbox)
+    proxmox.add_vm(101, "web01")
+    svc.sync_vmid(101)
+    site_id = next(iter(netbox.tables["sites"]))
+    assert nb_vm(netbox, "web01")["site"] == site_id
+
+
+def test_site_found_by_slug(make_service: ServiceFactory, proxmox: FakeProxmox, netbox: FakeNetBox) -> None:
+    site = netbox.add_site("InMind AI", slug="inmind-ai")
+    svc = make_service(netbox={"site": "inmind-ai"})
+    svc.check_netbox()
+    proxmox.add_vm(101, "web01")
+    svc.sync_vmid(101)
+    assert nb_vm(netbox, "web01")["site"] == site["id"]
+
+
+def test_existing_vm_without_site_is_updated(make_service: ServiceFactory, service: SyncService,
+                                              proxmox: FakeProxmox, netbox: FakeNetBox) -> None:
+    proxmox.add_vm(101, "web01")
+    service.sync_vmid(101)                      # created before netbox.site was configured
+    assert nb_vm(netbox, "web01").get("site") is None
+    svc = site_service(make_service, netbox)
+    report = svc.reconcile()
+    assert report.updated == [101]
+    assert nb_vm(netbox, "web01")["site"] is not None
+    assert svc.reconcile().unchanged == [101], "second run must not write again"
+
+
+def test_no_site_configured_leaves_site_alone(service: SyncService, proxmox: FakeProxmox, netbox: FakeNetBox) -> None:
+    other = netbox.add_site("manual-site")
+    proxmox.add_vm(101, "web01")
+    service.sync_vmid(101)
+    netbox.tables["virtual-machines"][nb_vm(netbox, "web01")["id"]]["site"] = other["id"]
+    assert service.sync_vmid(101, force=True).outcome == "unchanged"
+    assert nb_vm(netbox, "web01")["site"] == other["id"]
+
+
+def test_missing_site_fails_startup(make_service: ServiceFactory) -> None:
+    svc = make_service(netbox={"site": "inmind.ai"})
+    with pytest.raises(FatalStartupError, match=r"site 'inmind\.ai'"):
+        svc.check_netbox()
+
+
+def test_cluster_pinned_to_other_site_fails_startup(make_service: ServiceFactory, netbox: FakeNetBox) -> None:
+    other = netbox.add_site("elsewhere")
+    netbox.tables["clusters"][netbox.cluster_id()]["site"] = other["id"]
+    netbox.add_site("inmind.ai")
+    svc = make_service(netbox={"site": "inmind.ai"})
+    with pytest.raises(FatalStartupError, match="assigned to another site"):
+        svc.check_netbox()
+
+
+def test_cluster_on_same_site_is_fine(make_service: ServiceFactory, proxmox: FakeProxmox, netbox: FakeNetBox) -> None:
+    site = netbox.add_site("inmind.ai")
+    netbox.tables["clusters"][netbox.cluster_id()]["site"] = site["id"]
+    svc = make_service(netbox={"site": "inmind.ai"})
+    svc.check_netbox()
+    proxmox.add_vm(101, "web01")
+    assert svc.sync_vmid(101).outcome == "created"
+
+
+def test_status_follows_power_state(service: SyncService, proxmox: FakeProxmox, netbox: FakeNetBox) -> None:
+    vm = proxmox.add_vm(101, "web01", status="stopped")
+    service.sync_vmid(101)
+    assert nb_vm(netbox, "web01")["status"] == "offline"
+
+    vm.status = "running"
+    result = service.sync_vmid(101)             # not forced: the fingerprint must notice the change
+    assert "status offline -> active" in result.changes
+    assert nb_vm(netbox, "web01")["status"] == "active"
+
+    vm.status = "stopped"
+    service.sync_vmid(101)
+    assert nb_vm(netbox, "web01")["status"] == "offline"
+    assert nb_vm(netbox, "web01")["primary_ip4"] is not None, "stopping must not drop the IP"
+
+
+def test_unknown_power_state_keeps_status(service: SyncService, proxmox: FakeProxmox, netbox: FakeNetBox) -> None:
+    vm = proxmox.add_vm(101, "web01")
+    service.sync_vmid(101)
+    vm.status = "unknown"                       # e.g. the VM's node is offline
+    service.sync_vmid(101, force=True)
+    assert nb_vm(netbox, "web01")["status"] == "active"
+
+
+def test_status_sync_can_be_disabled(make_service: ServiceFactory, proxmox: FakeProxmox, netbox: FakeNetBox) -> None:
+    svc = make_service(sync={"sync_status": False})
+    svc.check_netbox()
+    vm = proxmox.add_vm(101, "web01")
+    svc.sync_vmid(101)
+    netbox.tables["virtual-machines"][nb_vm(netbox, "web01")["id"]]["status"] = "planned"
+    vm.status = "stopped"
+    svc.sync_vmid(101, force=True)
+    assert nb_vm(netbox, "web01")["status"] == "planned"
+
+
+def test_cluster_site_id_across_netbox_versions() -> None:
+    assert cluster_site_id({"site": {"id": 3, "name": "a"}}) == 3                      # NetBox < 4.2
+    assert cluster_site_id({"scope_type": "dcim.site", "scope_id": 4}) == 4             # NetBox >= 4.2
+    assert cluster_site_id({"scope_type": "dcim.region", "scope_id": 5}) is None
+    assert cluster_site_id({"site": None, "scope_type": None}) is None

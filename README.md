@@ -58,6 +58,8 @@ For every eligible Proxmox VM (QEMU VMs; templates are skipped by default):
 |-------------------------|---------------------------------------------------------------------|
 | Name                    | Proxmox VM name                                                     |
 | Cluster                 | the NetBox cluster configured for this Proxmox environment          |
+| Site                    | the configured `netbox.site` (e.g. `inmind.ai`); unset = left alone |
+| Status                  | power state: running → **Active**, stopped → **Offline**            |
 | vCPUs                   | configured vCPUs (`vcpus`, else `sockets × cores`)                  |
 | Memory                  | configured memory in MB (not current usage)                         |
 | Disk                    | sum of the configured sizes of all virtual disks                    |
@@ -124,6 +126,10 @@ The agent never creates clusters. In NetBox:
 
 If the configured cluster does not exist, the agent refuses to start with a clear error.
 
+The site set on the VMs (`netbox.site`, e.g. `inmind.ai`) must exist as well (*Organization →
+Sites*); the agent never creates sites. NetBox only accepts a VM on a site if its cluster is on
+that site too or on no site at all, so if you assign the cluster to a site, use the same one.
+
 ### 1.2 Create a user for the agent with minimum permissions
 
 In *Admin → Users* (NetBox 4.x) or *Admin → Users* in the Django admin (NetBox 3.x) create a
@@ -134,15 +140,15 @@ user `netbox-pve-sync` (not staff, not superuser). Then add these **object permi
 |-----------------------------------|----------------------------------------------------------|-----------------------------|
 | netbox-pve-sync: VMs and IPs      | Virtualization › virtual machine, IPAM › IP address      | view, add, change, delete   |
 | netbox-pve-sync: interfaces       | Virtualization › interface                               | view, add                   |
-| netbox-pve-sync: read-only lookups| Virtualization › cluster, Extras › tag, Extras › custom field, IPAM › VRF | view       |
+| netbox-pve-sync: read-only lookups| Virtualization › cluster, DCIM › site, Extras › tag, Extras › custom field, IPAM › VRF | view |
 
 Why each one is needed:
 
-* **VMs**: create/update/delete the VMs it owns, set Primary IPv4.
+* **VMs**: create/update/delete the VMs it owns, set Primary IPv4, site and status.
 * **IP addresses**: create the management IP, assign/unassign it, delete IPs it created.
 * **Interfaces**: create `eth0`. No change/delete needed: when a VM is deleted NetBox deletes
   its interfaces itself (cascade).
-* **Lookups**: find the cluster, the tag, the custom fields and (optional) VRF by name.
+* **Lookups**: find the cluster, the site, the tag, the custom fields and (optional) VRF by name.
 
 The agent does **not** need admin rights. (Optionally restrict the VM permission with a
 constraint such as `{"cluster__name": "PVE-Cyprus"}` - one user per environment - for even
@@ -187,7 +193,7 @@ Fields* and *Customization → Tags*.
 apt-get install -y git
 git clone https://github.com/Elvick-rayen/pvesync.git netbox-pve-sync
 cd netbox-pve-sync
-./install.sh --netbox-url http://192.168.1.218:8000 --cluster PVE-Cyprus
+./install.sh --netbox-url http://192.168.1.218:8000 --cluster PVE-Cyprus --site inmind.ai
 ```
 
 The installer asks for the NetBox API token (input hidden). It then:
@@ -215,6 +221,7 @@ Expected `test-connection` output:
 [ OK ] NetBox 3.3.10 reachable (VM disk unit: GB)
 [ OK ] NetBox token accepted
 [ OK ] NetBox cluster 'PVE-Cyprus' exists (id 1)
+[ OK ] NetBox site 'inmind.ai' exists (id 1)
 [ OK ] NetBox custom fields and tag present
 
 All checks passed.
@@ -329,6 +336,7 @@ Main options:
 | Option | Default | Meaning |
 |---|---|---|
 | `netbox.cluster` | - | NetBox cluster of this environment (must exist) |
+| `netbox.site` | none | NetBox site (name or slug) set on every VM, e.g. `inmind.ai`; none = site left alone |
 | `netbox.vrf` | none | VRF for created IPs (none = global table) |
 | `netbox.tag` | `netbox-pve-sync` | tag that marks managed objects |
 | `proxmox.verify_ssl` / `ca_bundle` | `true` / cluster CA | TLS verification of the Proxmox API |
@@ -343,6 +351,7 @@ Main options:
 | `sync.adopt_existing` | `false` | take over an *unmanaged* NetBox VM with the same name |
 | `sync.claim_unassigned_ips` | `true` | reuse an existing *unassigned* IP object |
 | `sync.ip_cleanup_policy` | `delete_managed` | see [IP addresses](#ip-addresses) |
+| `sync.sync_status` | `true` | NetBox status follows the power state (running → Active, stopped → Offline) |
 | `sync.max_deletions_per_run` | `10` | reconciliation refuses to delete more VMs at once |
 | `retry.initial_delay` / `max_delay` | `5s` / `1h` | exponential backoff of the retry queue |
 | `guest_agent.ip_wait_*` | `30s`/`15m`/`24h` | re-check schedule for VMs without IP |
@@ -378,7 +387,8 @@ conflict, `78` configuration error.
 | CPU / RAM / boot disk / name change (GUI, API, `qm set`) | task log and/or VM list | ~5 s |
 | extra disk added/removed with `qm set` on the CLI (no task) | local check | ≤ 10 min |
 | disk resize, move | task log | ~5 s |
-| start, reboot, migrate | task log → IP re-check | ~5 s, IP when the guest agent reports it |
+| start, reboot, migrate | task log → status + IP re-check | ~5 s, IP when the guest agent reports it |
+| stop, shutdown | task log + VM list → status Offline | ~5 s (the last known IP is kept) |
 | IP changed inside the guest | local check | ≤ 10 min |
 | anything missed while the agent was down | startup reconciliation | at start |
 | anything else | reconciliation | ≤ 6 h |
@@ -489,6 +499,8 @@ only talks HTTPS to the local Proxmox API with its own token.
 | Symptom | Fix |
 |---|---|
 | `NetBox cluster 'X' does not exist` | create it in NetBox or fix `netbox.cluster` (case-sensitive) |
+| `NetBox site 'X' (netbox.site) does not exist` | create the site, or use its exact name or slug in `netbox.site` |
+| `cluster ... is assigned to another site` | assign the cluster to the same site in NetBox (or to none), or fix `netbox.site` |
 | `NetBox is not prepared: custom field ... does not exist` | `init-netbox` with an admin token (step 1.4) |
 | `NetBox rejected the token` / HTTP 403 | token wrong, expired, not *write enabled*, or permissions missing (step 1.2) |
 | `Proxmox token lacks VM.GuestAgent.Audit` (PVE 9) | upgraded from PVE 8? re-run `./install.sh` - it updates the role |
@@ -508,7 +520,7 @@ only talks HTTPS to the local Proxmox API with its own token.
 2. On the new Proxmox node:
    ```bash
    git clone https://github.com/Elvick-rayen/pvesync.git netbox-pve-sync && cd netbox-pve-sync
-   ./install.sh --netbox-url http://192.168.1.218:8000 --cluster PVE-Production
+   ./install.sh --netbox-url http://192.168.1.218:8000 --cluster PVE-Production --site inmind.ai
    netbox-pve-sync --dry-run
    systemctl start netbox-pve-sync
    ```
@@ -527,6 +539,10 @@ cd netbox-pve-sync && git pull && ./install.sh
 The installer keeps `config.yaml`, `secrets.env` and the state, updates the code, brings the
 Proxmox role up to date (e.g. after PVE 8 → 9), re-checks the connection and restarts the
 service. After a Proxmox 8 → 9 upgrade always re-run `./install.sh`.
+
+To set the site on an existing installation, run `./install.sh --site inmind.ai` (it adds
+`netbox.site` to the kept `config.yaml`) or add `site: "inmind.ai"` under `netbox:` by hand and
+restart the service. The startup reconciliation then sets the site and status on every VM.
 
 ## Uninstall
 
@@ -561,7 +577,7 @@ NetBox VMs by tag `netbox-pve-sync` and the cluster, and bulk-delete.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
-.venv/bin/pytest            # 123 unit/CLI tests, Proxmox and NetBox mocked (no infrastructure needed)
+.venv/bin/pytest            # 134 unit/CLI tests, Proxmox and NetBox mocked (no infrastructure needed)
 .venv/bin/ruff check src tests
 .venv/bin/mypy src
 ```

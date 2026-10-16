@@ -74,6 +74,10 @@ NetBox 4.x: value = bytes / 1024² (100G → 102400), which NetBox 4 displays as
 * **Ownership**: cluster + tag `netbox-pve-sync` + `proxmox_source == sync.source_id` +
   `proxmox_vmid` set. All four must match before anything is changed or deleted.
   `source_id` defaults to the cluster name, so two environments never collide.
+* **Site and status**: `netbox.site` is resolved by name or slug at startup and set on every owned
+  VM. The startup check refuses a cluster that is assigned to a different site, because NetBox
+  rejects such VMs. Status follows the Proxmox power state (running → `active`, stopped →
+  `offline`, unknown → unchanged) and is part of the fingerprint, so a start or stop is synced at once.
 * **Created IPs** carry the same tag; that is how `ip_cleanup_policy: delete_managed`
   recognizes IPs it may delete.
 * **Duplicates**: VM lookup is by `cluster_id` + `cf_proxmox_vmid`. If two owned VMs share a VMID

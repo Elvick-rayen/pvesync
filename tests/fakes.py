@@ -8,6 +8,7 @@ enforces the validation rules that matter for ordering and safety:
 * ``primary_ip4`` must be an IP assigned to an interface of that VM;
 * an IP that is the primary IP of its VM cannot be unassigned or moved;
 * interface names are unique per VM;
+* a VM's site must match the site of its cluster, if the cluster has one;
 * deleting a VM deletes its interfaces, and deleting an interface deletes the
   IPs assigned to it (NetBox cascade behaviour).
 """
@@ -63,7 +64,7 @@ class FakeNetBox(FakeSessionBase):
         self.next_id = 100
         self.tables: dict[str, dict[int, dict[str, Any]]] = {
             "clusters": {}, "virtual-machines": {}, "interfaces": {}, "ip-addresses": {},
-            "tags": {}, "custom-fields": {}, "vrfs": {},
+            "tags": {}, "custom-fields": {}, "vrfs": {}, "sites": {},
         }
         self.writes: list[tuple[str, str, int | None]] = []
 
@@ -77,8 +78,11 @@ class FakeNetBox(FakeSessionBase):
         self.tables[table][obj["id"]] = obj
         return obj
 
-    def add_cluster(self, name: str) -> dict[str, Any]:
-        return self.add("clusters", name=name)
+    def add_cluster(self, name: str, site: int | None = None) -> dict[str, Any]:
+        return self.add("clusters", name=name, site=site)
+
+    def add_site(self, name: str, slug: str | None = None) -> dict[str, Any]:
+        return self.add("sites", name=name, slug=slug or re.sub(r"[^a-z0-9]+", "-", name.lower()))
 
     def prepare(self, cluster: str = "PVE-Test", tag: str = "netbox-pve-sync") -> None:
         self.add_cluster(cluster)
@@ -128,9 +132,14 @@ class FakeNetBox(FakeSessionBase):
                            for t in out["tags"] if t in self.tables["tags"]]
         if table == "virtual-machines":
             out["cluster"] = self._ref("clusters", obj.get("cluster"), "name")
+            out["site"] = self._ref("sites", obj.get("site"), "name", "slug")
+            if out.get("status") is not None:
+                out["status"] = {"value": out["status"], "label": str(out["status"]).capitalize()}
             out["primary_ip4"] = self._ref("ip-addresses", obj.get("primary_ip4"), "address")
             out["primary_ip6"] = self._ref("ip-addresses", obj.get("primary_ip6"), "address")
             out.setdefault("custom_fields", {"proxmox_vmid": None, "proxmox_source": None})
+        elif table == "clusters":
+            out["site"] = self._ref("sites", obj.get("site"), "name", "slug")
         elif table == "interfaces":
             out["virtual_machine"] = self._ref("virtual-machines", obj["virtual_machine"], "name")
         elif table == "ip-addresses":
@@ -190,6 +199,9 @@ class FakeNetBox(FakeSessionBase):
             if other["id"] != obj["id"] and other.get("cluster") == obj.get("cluster") \
                     and other["name"].lower() == obj["name"].lower():
                 return "Virtual machine name must be unique per cluster."
+        cluster = self.tables["clusters"].get(obj.get("cluster") or -1)
+        if cluster and cluster.get("site") and obj.get("site") and cluster["site"] != obj["site"]:
+            return "The selected cluster is not assigned to this site."
         primary = obj.get("primary_ip4")
         if primary is not None:
             ip = self.tables["ip-addresses"].get(primary)

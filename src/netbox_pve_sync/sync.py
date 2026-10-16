@@ -64,6 +64,11 @@ def _same_number(a: Any, b: Any) -> bool:
         return False
 
 
+def _choice(value: Any) -> Any:
+    """NetBox returns choice fields such as ``status`` as ``{"value": ..., "label": ...}``."""
+    return value.get("value") if isinstance(value, dict) else value
+
+
 def _host(address: str) -> str:
     return str(address).split("/")[0]
 
@@ -151,13 +156,18 @@ class Synchronizer:
 
     # ================================================================ VM object
     def _desired_fields(self, desired: DesiredVM) -> dict[str, Any]:
-        return {
+        fields: dict[str, Any] = {
             "name": desired.name,
             "cluster": self.prereqs.cluster_id,
             "vcpus": desired.vcpus,
             "memory": desired.memory_mb,
             "disk": self.nb.compat.disk_value(desired.disk_bytes),
         }
+        if self.prereqs.site_id is not None:
+            fields["site"] = self.prereqs.site_id
+        if self.config.sync.sync_status and desired.netbox_status is not None:
+            fields["status"] = desired.netbox_status
+        return fields
 
     def _name_taken(self, name: str, except_id: int | None) -> dict[str, Any] | None:
         # NetBox enforces case-insensitive unique VM names per cluster (and tenant).
@@ -189,8 +199,8 @@ class Synchronizer:
             return None
 
         data = self._desired_fields(desired)
+        data.setdefault("status", "active")
         data.update({
-            "status": "active",
             "tags": [self.prereqs.tag_id],
             "custom_fields": {CF_VMID: desired.vmid, CF_SOURCE: self.source},
         })
@@ -215,6 +225,12 @@ class Synchronizer:
         if obj_id(vm.get("cluster")) != want["cluster"]:
             patch["cluster"] = want["cluster"]
             result.changes.append("cluster")
+        if "site" in want and obj_id(vm.get("site")) != want["site"]:
+            patch["site"] = want["site"]
+            result.changes.append(f"site -> {self.config.netbox.site}")
+        if "status" in want and _choice(vm.get("status")) != want["status"]:
+            patch["status"] = want["status"]
+            result.changes.append(f"status {_choice(vm.get('status'))} -> {want['status']}")
         if not _same_number(vm.get("vcpus"), want["vcpus"]):
             patch["vcpus"] = want["vcpus"]
             result.changes.append(f"vcpus {vm.get('vcpus')} -> {want['vcpus']:g}")

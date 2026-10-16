@@ -198,6 +198,7 @@ class NetBoxConfig:
     timeout: float = 15.0
     vrf: str | None = None
     tag: str = "netbox-pve-sync"
+    site: str | None = None
 
 
 @dataclass(frozen=True)
@@ -228,6 +229,7 @@ class SyncConfig:
     ip_cleanup_policy: str = "delete_managed"
     max_deletions_per_run: int = 10
     include_efi_tpm_disks: bool = False
+    sync_status: bool = True
 
 
 @dataclass(frozen=True)
@@ -313,6 +315,7 @@ def parse_config(raw: Any, *, env: dict[str, str] | None = None, source_path: Pa
         timeout=nb.opt_duration("timeout", "15s"),
         vrf=nb.opt_str("vrf"),
         tag=nb.opt_str("tag", "netbox-pve-sync") or "netbox-pve-sync",
+        site=nb.opt_str("site"),
     )
     nb.finish()
     if not re.match(r"^[-a-z0-9_]+$", netbox.tag):
@@ -352,6 +355,7 @@ def parse_config(raw: Any, *, env: dict[str, str] | None = None, source_path: Pa
         ip_cleanup_policy=policy,
         max_deletions_per_run=sy.opt_int("max_deletions_per_run", 10),
         include_efi_tpm_disks=sy.opt_bool("include_efi_tpm_disks", False),
+        sync_status=sy.opt_bool("sync_status", True),
     )
     sy.finish()
     if len(sync.source_id) > 100:
