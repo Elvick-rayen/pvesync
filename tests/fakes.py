@@ -84,14 +84,14 @@ class FakeNetBox(FakeSessionBase):
     def add_site(self, name: str, slug: str | None = None) -> dict[str, Any]:
         return self.add("sites", name=name, slug=slug or re.sub(r"[^a-z0-9]+", "-", name.lower()))
 
-    def prepare(self, cluster: str = "PVE-Test", tag: str = "netbox-pve-sync") -> None:
+    def prepare(self, cluster: str = "PVE-Test", tag: str = "tag") -> None:
         self.add_cluster(cluster)
         self.add("tags", name=tag, slug=tag)
         key = "object_types" if int(self.version.split(".")[0]) >= 4 else "content_types"
         self.add("custom-fields", name="proxmox_vmid", type="integer", **{key: ["virtualization.virtualmachine"]})
         self.add("custom-fields", name="proxmox_source", type="text", **{key: ["virtualization.virtualmachine"]})
 
-    def tag_id(self, slug: str = "netbox-pve-sync") -> int:
+    def tag_id(self, slug: str = "tag") -> int:
         return next(t["id"] for t in self.tables["tags"].values() if t["slug"] == slug)
 
     def cluster_id(self, name: str = "PVE-Test") -> int:

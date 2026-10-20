@@ -4,7 +4,7 @@ Ownership model (see README "Ownership and safety"): a NetBox VM is managed by
 an agent only if **all** of these hold:
 
 * it is in the agent's configured NetBox cluster,
-* it carries the ``netbox-pve-sync`` tag,
+* it carries the ``tag`` tag (configurable via ``netbox.tag``),
 * custom field ``proxmox_source`` equals the agent's ``sync.source_id``,
 * custom field ``proxmox_vmid`` is set.
 

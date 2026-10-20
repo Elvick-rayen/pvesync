@@ -14,7 +14,7 @@ netbox:
   # ca_bundle: /etc/netbox-pve-sync/netbox-ca.pem
   timeout: 15s
   # vrf: null                               # NetBox VRF for VM IPs; unset = global table
-  # tag: netbox-pve-sync                    # tag that marks objects managed by this agent
+  # tag: tag                                # tag that marks objects managed by this agent
 
 proxmox:
   api_url: "https://127.0.0.1:8006"         # the local node's API

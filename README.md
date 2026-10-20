@@ -67,7 +67,7 @@ For every eligible Proxmox VM (QEMU VMs; templates are skipped by default):
 | IP address              | the management IPv4 from the QEMU Guest Agent, assigned to `eth0`   |
 | Primary IPv4            | the same IP (shown as "Primary IPv4" in NetBox)                     |
 | Custom fields           | `proxmox_vmid`, `proxmox_source` (identity and ownership)           |
-| Tag                     | `netbox-pve-sync`                                                   |
+| Tag                     | `tag`                                                               |
 
 The physical Proxmox **node** a VM runs on is **not** stored in NetBox (the VM's `device`
 field stays empty). Storage (Ceph, NFS, local-lvm, ZFS) is not represented either.
@@ -171,7 +171,7 @@ The agent needs two custom fields on *Virtual Machine* and one tag:
 |------------------|---------|-------------------------------------------------|
 | `proxmox_vmid`   | Integer | stable identity (the Proxmox VMID)              |
 | `proxmox_source` | Text    | which Proxmox environment owns the VM           |
-| tag `netbox-pve-sync` | -  | marks objects managed by the agent              |
+| tag `tag`             | -  | marks objects managed by the agent              |
 
 Easiest: after installing on the first node (step 2), run **once** with an *admin* token:
 
@@ -338,7 +338,7 @@ Main options:
 | `netbox.cluster` | - | NetBox cluster of this environment (must exist) |
 | `netbox.site` | none | NetBox site (name or slug) set on every VM, e.g. `inmind.ai`; none = site left alone |
 | `netbox.vrf` | none | VRF for created IPs (none = global table) |
-| `netbox.tag` | `netbox-pve-sync` | tag that marks managed objects |
+| `netbox.tag` | `tag`             | tag that marks managed objects |
 | `proxmox.verify_ssl` / `ca_bundle` | `true` / cluster CA | TLS verification of the Proxmox API |
 | `proxmox.leader_election` | `true` | only one active agent per PVE cluster |
 | `proxmox.agent_nodes` | all | set if the agent is not installed on every node |
@@ -415,7 +415,7 @@ after checking. An empty Proxmox VM list is never treated as "all VMs deleted".
 A NetBox VM is managed by an agent **only if all** of these are true:
 
 1. it is in the agent's configured cluster;
-2. it has the tag `netbox-pve-sync`;
+2. it has the tag `tag`;
 3. its `proxmox_source` equals the agent's `sync.source_id`;
 4. its `proxmox_vmid` is set.
 
@@ -442,7 +442,7 @@ to `eth0`, or an existing IP assigned) → Primary IPv4 → only then the old IP
 * **Deleting a VM:** NetBox deletes a VM's interfaces and the IPs on them (cascade). The agent
   therefore first detaches every IP it should keep.
 * **`ip_cleanup_policy`**:
-  * `delete_managed` (default): IPs that the agent created (tagged `netbox-pve-sync`) are
+  * `delete_managed` (default): IPs that the agent created (tagged `tag`) are
     deleted when they are no longer used. IPs it did not create (e.g. claimed from IPAM, or
     added by hand) are only unassigned, never deleted.
   * `unassign`: no IP object is ever deleted; unused IPs are just unassigned.
@@ -553,7 +553,7 @@ restart the service. The startup reconciliation then sets the site and status on
 ```
 
 NetBox is never changed by uninstalling: synchronized VMs stay. To remove them too, filter
-NetBox VMs by tag `netbox-pve-sync` and the cluster, and bulk-delete.
+NetBox VMs by tag `tag` and the cluster, and bulk-delete.
 
 ## Security considerations
 

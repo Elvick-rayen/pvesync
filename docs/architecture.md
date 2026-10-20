@@ -71,7 +71,7 @@ NetBox 4.x: value = bytes / 1024² (100G → 102400), which NetBox 4 displays as
 ## 4. Data model and identity
 
 * **Identity**: custom field `proxmox_vmid` (integer). Names can change; VMIDs cannot.
-* **Ownership**: cluster + tag `netbox-pve-sync` + `proxmox_source == sync.source_id` +
+* **Ownership**: cluster + tag `tag` + `proxmox_source == sync.source_id` +
   `proxmox_vmid` set. All four must match before anything is changed or deleted.
   `source_id` defaults to the cluster name, so two environments never collide.
 * **Site and status**: `netbox.site` is resolved by name or slug at startup and set on every owned

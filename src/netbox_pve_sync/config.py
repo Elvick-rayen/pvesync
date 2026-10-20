@@ -197,7 +197,7 @@ class NetBoxConfig:
     ca_bundle: str | None = None
     timeout: float = 15.0
     vrf: str | None = None
-    tag: str = "netbox-pve-sync"
+    tag: str = "tag"
     site: str | None = None
 
 
@@ -314,7 +314,7 @@ def parse_config(raw: Any, *, env: dict[str, str] | None = None, source_path: Pa
         ca_bundle=nb.opt_str("ca_bundle"),
         timeout=nb.opt_duration("timeout", "15s"),
         vrf=nb.opt_str("vrf"),
-        tag=nb.opt_str("tag", "netbox-pve-sync") or "netbox-pve-sync",
+        tag=nb.opt_str("tag", "tag") or "tag",
         site=nb.opt_str("site"),
     )
     nb.finish()
