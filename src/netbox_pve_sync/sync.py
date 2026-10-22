@@ -72,6 +72,11 @@ def _host(address: str) -> str:
     return str(address).split("/")[0]
 
 
+def _blank_description(ip: dict[str, Any]) -> bool:
+    """No description yet, or the one older versions wrote: safe to replace with the VM name."""
+    return str(ip.get("description") or "").strip() in ("", "Managed by netbox-pve-sync")
+
+
 class Synchronizer:
     def __init__(self, netbox: NetBoxClient, config: Config, prereqs: NetBoxPrereqs) -> None:
         self.nb = netbox
@@ -328,17 +333,17 @@ class Synchronizer:
         # 1. Already on eth0?
         for ip in eth0_ips:
             if _host(ip["address"]) == desired.ip.address:
-                if self.prereqs.tag_id in _tag_ids(ip):
-                    patch: dict[str, Any] = {}
-                    if ip["address"] != cidr:
-                        patch["address"] = cidr
-                        result.changes.append(f"ip prefix {ip['address']} -> {cidr}")
-                    if ip.get("description") != desired.name:
-                        patch["description"] = desired.name
-                        result.changes.append(f"ip description -> {desired.name}")
-                    if patch:
-                        self.nb.update(EP_IPS, int(ip["id"]), patch, describe=f"IP {ip['address']} -> {cidr}")
-                        ip = {**ip, **patch}
+                ours = self.prereqs.tag_id in _tag_ids(ip)
+                patch: dict[str, Any] = {}
+                if ours and ip["address"] != cidr:
+                    patch["address"] = cidr
+                    result.changes.append(f"ip prefix {ip['address']} -> {cidr}")
+                if ip.get("description") != desired.name and (ours or _blank_description(ip)):
+                    patch["description"] = desired.name
+                    result.changes.append(f"ip description -> {desired.name}")
+                if patch:
+                    self.nb.update(EP_IPS, int(ip["id"]), patch, describe=f"IP {ip['address']} -> {cidr}")
+                    ip = {**ip, **patch}
                 return ip
 
         # 2. Exists somewhere in IPAM?
@@ -347,11 +352,12 @@ class Synchronizer:
         free = [ip for ip in existing if not ip.get("assigned_object_type")]
         if mine or (free and self.config.sync.claim_unassigned_ips):
             ip = sorted(mine or free, key=lambda i: int(i["id"]))[0]
-            self.nb.update(EP_IPS, int(ip["id"]),
-                           {"assigned_object_type": VMINTERFACE_TYPE, "assigned_object_id": iface_id},
-                           describe=f"IP {ip['address']}: assign to {self.ifname}")
+            claim: dict[str, Any] = {"assigned_object_type": VMINTERFACE_TYPE, "assigned_object_id": iface_id}
+            if _blank_description(ip):
+                claim["description"] = desired.name
+            self.nb.update(EP_IPS, int(ip["id"]), claim, describe=f"IP {ip['address']}: assign to {self.ifname}")
             result.changes.append(f"assigned existing IP {ip['address']} to {self.ifname}")
-            return {**ip, "assigned_object_type": VMINTERFACE_TYPE, "assigned_object_id": iface_id}
+            return {**ip, **claim}
         if existing:
             holder = existing[0]
             owner = holder.get("assigned_object") or {}

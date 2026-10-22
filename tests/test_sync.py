@@ -543,3 +543,20 @@ def test_cluster_gets_proxmox_group(service: SyncService, netbox: FakeNetBox) ->
 def test_cluster_group_can_be_disabled(make_service: ServiceFactory, netbox: FakeNetBox) -> None:
     make_service(netbox={"cluster_group": None}).check_netbox()
     assert netbox.tables["cluster-groups"] == {}
+
+
+def test_untagged_ip_gets_vm_name_only_if_description_blank(service: SyncService, proxmox: FakeProxmox,
+                                                            netbox: FakeNetBox) -> None:
+    blank = netbox.add("ip-addresses", address="192.168.1.50/24", vrf=None, tags=[], assigned_object_type=None,
+                       assigned_object_id=None, description="")
+    doc = netbox.add("ip-addresses", address="192.168.1.51/24", vrf=None, tags=[], assigned_object_type=None,
+                     assigned_object_id=None, description="documented by hand")
+    proxmox.add_vm(101, "web01", ip="192.168.1.50/24")
+    proxmox.add_vm(102, "web02", ip="192.168.1.51/24", mac="BC:24:11:00:00:02")
+    service.sync_vmid(101)
+    service.sync_vmid(102)
+    assert netbox.tables["ip-addresses"][blank["id"]]["description"] == "web01"
+    assert netbox.tables["ip-addresses"][doc["id"]]["description"] == "documented by hand"
+
+    netbox.tables["ip-addresses"][blank["id"]]["description"] = ""     # cleared later in NetBox
+    assert "ip description -> web01" in service.sync_vmid(101, force=True).changes
