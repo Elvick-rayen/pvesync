@@ -23,7 +23,7 @@ from .errors import (
 )
 from .logging_setup import get_logger, log, mask_secret
 from .netbox.client import NetBoxClient
-from .netbox.setup import NetBoxPrereqs, resolve_prerequisites
+from .netbox.setup import NetBoxPrereqs, ensure_cluster_group, resolve_prerequisites
 from .proxmox.client import ProxmoxClient, VmResource
 from .state import StateStore
 from .sync import Synchronizer, SyncResult
@@ -109,6 +109,8 @@ class SyncService:
                 "without permission to view virtual machines") from exc
         self.prereqs = resolve_prerequisites(self.netbox, self.config.netbox.cluster, self.config.netbox.tag,
                                              self.config.netbox.vrf, self.config.netbox.site)
+        if self.config.netbox.cluster_group:
+            ensure_cluster_group(self.netbox, self.config.netbox.cluster, self.config.netbox.cluster_group)
         self._sync = Synchronizer(self.netbox, self.config, self.prereqs)
         log(logger, logging.INFO, f"Connected to NetBox {compat.version}", netbox_version=str(compat.version),
             url=self.config.netbox.url, cluster=self.config.netbox.cluster, cluster_id=self.prereqs.cluster_id,

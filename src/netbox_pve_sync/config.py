@@ -199,6 +199,7 @@ class NetBoxConfig:
     vrf: str | None = None
     tag: str = "tag"
     site: str | None = None
+    cluster_group: str | None = "Proxmox"
 
 
 @dataclass(frozen=True)
@@ -316,6 +317,7 @@ def parse_config(raw: Any, *, env: dict[str, str] | None = None, source_path: Pa
         vrf=nb.opt_str("vrf"),
         tag=nb.opt_str("tag", "tag") or "tag",
         site=nb.opt_str("site"),
+        cluster_group=nb.opt_str("cluster_group") if "cluster_group" in nb.data else "Proxmox",
     )
     nb.finish()
     if not re.match(r"^[-a-z0-9_]+$", netbox.tag):

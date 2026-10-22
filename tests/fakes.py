@@ -64,7 +64,7 @@ class FakeNetBox(FakeSessionBase):
         self.next_id = 100
         self.tables: dict[str, dict[int, dict[str, Any]]] = {
             "clusters": {}, "virtual-machines": {}, "interfaces": {}, "ip-addresses": {},
-            "tags": {}, "custom-fields": {}, "vrfs": {}, "sites": {},
+            "tags": {}, "custom-fields": {}, "vrfs": {}, "sites": {}, "cluster-groups": {},
         }
         self.writes: list[tuple[str, str, int | None]] = []
 
@@ -140,6 +140,7 @@ class FakeNetBox(FakeSessionBase):
             out.setdefault("custom_fields", {"proxmox_vmid": None, "proxmox_source": None})
         elif table == "clusters":
             out["site"] = self._ref("sites", obj.get("site"), "name", "slug")
+            out["group"] = self._ref("cluster-groups", obj.get("group"), "name", "slug")
         elif table == "interfaces":
             out["virtual_machine"] = self._ref("virtual-machines", obj["virtual_machine"], "name")
         elif table == "ip-addresses":

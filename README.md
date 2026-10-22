@@ -141,6 +141,7 @@ user `netbox-pve-sync` (not staff, not superuser). Then add these **object permi
 | netbox-pve-sync: VMs and IPs      | Virtualization › virtual machine, IPAM › IP address      | view, add, change, delete   |
 | netbox-pve-sync: interfaces       | Virtualization › interface                               | view, add                   |
 | netbox-pve-sync: read-only lookups| Virtualization › cluster, DCIM › site, Extras › tag, Extras › custom field, IPAM › VRF | view |
+| netbox-pve-sync: cluster group    | Virtualization › cluster, Virtualization › cluster group | view, add, change           |
 
 Why each one is needed:
 
@@ -148,6 +149,9 @@ Why each one is needed:
 * **IP addresses**: create the management IP, assign/unassign it, delete IPs it created.
 * **Interfaces**: create `eth0`. No change/delete needed: when a VM is deleted NetBox deletes
   its interfaces itself (cascade).
+* **Cluster group**: put the configured cluster in the `Proxmox` cluster group
+  (`netbox.cluster_group`), creating the group if it does not exist. Without this permission
+  the agent only logs a warning.
 * **Lookups**: find the cluster, the site, the tag, the custom fields and (optional) VRF by name.
 
 The agent does **not** need admin rights. (Optionally restrict the VM permission with a

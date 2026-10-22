@@ -15,12 +15,13 @@ cleanup policy recognises IPs it may delete.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
-from ..errors import FatalStartupError
+from ..errors import AuthenticationError, FatalStartupError
 from ..logging_setup import get_logger, log
-from .client import EP_CUSTOM_FIELDS, EP_TAGS, NetBoxClient, obj_id
+from .client import EP_CLUSTER_GROUPS, EP_CLUSTERS, EP_CUSTOM_FIELDS, EP_TAGS, NetBoxClient, obj_id
 
 logger = get_logger("netbox.setup")
 
@@ -146,3 +147,32 @@ def resolve_prerequisites(client: NetBoxClient, cluster_name: str, tag_slug: str
     assert tag is not None
     return NetBoxPrereqs(cluster_id=int(cluster["id"]), cluster_name=cluster_name, tag_id=int(tag["id"]),
                          vrf_id=vrf_id, site_id=site_id)
+
+
+def ensure_cluster_group(client: NetBoxClient, cluster_name: str, group_name: str) -> list[str]:
+    """Put the configured cluster in cluster group ``group_name``, creating the group if needed.
+
+    Best effort: without permission to add cluster groups or change clusters it only warns.
+    """
+    actions: list[str] = []
+    cluster = client.cluster(cluster_name)
+    if cluster is None:
+        return actions
+    try:
+        group = client.cluster_group(group_name)
+        if group is None:
+            slug = re.sub(r"[^a-z0-9_]+", "-", group_name.lower()).strip("-") or "proxmox"
+            group = client.create(EP_CLUSTER_GROUPS, {"name": group_name, "slug": slug},
+                                  describe=f"cluster group {group_name}")
+            actions.append(f"created cluster group '{group_name}'")
+        if obj_id(cluster.get("group")) != int(group["id"]):
+            client.update(EP_CLUSTERS, int(cluster["id"]), {"group": int(group["id"])},
+                          describe=f"cluster {cluster_name}: group {group_name}")
+            actions.append(f"set group of cluster '{cluster_name}' to '{group_name}'")
+    except AuthenticationError as exc:
+        log(logger, logging.WARNING, f"Cannot set cluster group '{group_name}' on cluster '{cluster_name}': "
+            "the API token lacks permission (add cluster group / change cluster)", error=str(exc))
+        return actions
+    for action in actions:
+        log(logger, logging.INFO, f"NetBox setup: {action}")
+    return actions

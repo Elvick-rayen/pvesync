@@ -37,7 +37,6 @@ from .netbox.setup import CF_SOURCE, CF_VMID, NetBoxPrereqs
 
 logger = get_logger("sync")
 
-MANAGED_DESCRIPTION = "Managed by netbox-pve-sync"
 
 
 @dataclass
@@ -329,11 +328,17 @@ class Synchronizer:
         # 1. Already on eth0?
         for ip in eth0_ips:
             if _host(ip["address"]) == desired.ip.address:
-                if ip["address"] != cidr and self.prereqs.tag_id in _tag_ids(ip):
-                    self.nb.update(EP_IPS, int(ip["id"]), {"address": cidr},
-                                   describe=f"IP {ip['address']} -> {cidr}")
-                    result.changes.append(f"ip prefix {ip['address']} -> {cidr}")
-                    ip = {**ip, "address": cidr}
+                if self.prereqs.tag_id in _tag_ids(ip):
+                    patch: dict[str, Any] = {}
+                    if ip["address"] != cidr:
+                        patch["address"] = cidr
+                        result.changes.append(f"ip prefix {ip['address']} -> {cidr}")
+                    if ip.get("description") != desired.name:
+                        patch["description"] = desired.name
+                        result.changes.append(f"ip description -> {desired.name}")
+                    if patch:
+                        self.nb.update(EP_IPS, int(ip["id"]), patch, describe=f"IP {ip['address']} -> {cidr}")
+                        ip = {**ip, **patch}
                 return ip
 
         # 2. Exists somewhere in IPAM?
@@ -362,7 +367,7 @@ class Synchronizer:
 
         # 3. Brand new: create it already assigned to eth0 and tagged as ours.
         data: dict[str, Any] = {
-            "address": cidr, "status": "active", "description": MANAGED_DESCRIPTION,
+            "address": cidr, "status": "active", "description": desired.name,
             "assigned_object_type": VMINTERFACE_TYPE, "assigned_object_id": iface_id,
             "tags": [self.prereqs.tag_id],
         }

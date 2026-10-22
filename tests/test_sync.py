@@ -519,3 +519,27 @@ def test_cluster_site_id_across_netbox_versions() -> None:
     assert cluster_site_id({"scope_type": "dcim.site", "scope_id": 4}) == 4             # NetBox >= 4.2
     assert cluster_site_id({"scope_type": "dcim.region", "scope_id": 5}) is None
     assert cluster_site_id({"site": None, "scope_type": None}) is None
+
+
+def test_ip_description_is_vm_name(service: SyncService, proxmox: FakeProxmox, netbox: FakeNetBox) -> None:
+    proxmox.add_vm(101, "web01", ip="192.168.1.50/24")
+    service.sync_vmid(101)
+    assert [ip["description"] for ip in netbox.ips()] == ["web01"]
+
+    proxmox.vms[101].config["name"] = "web02"
+    service.sync_vmid(101)
+    assert [ip["description"] for ip in netbox.ips()] == ["web02"]
+
+
+def test_cluster_gets_proxmox_group(service: SyncService, netbox: FakeNetBox) -> None:
+    groups = list(netbox.tables["cluster-groups"].values())
+    assert [g["name"] for g in groups] == ["Proxmox"]
+    assert netbox.tables["clusters"][netbox.cluster_id()]["group"] == groups[0]["id"]
+    writes = netbox.write_count()
+    service.check_netbox()
+    assert netbox.write_count() == writes, "an already grouped cluster must not be written again"
+
+
+def test_cluster_group_can_be_disabled(make_service: ServiceFactory, netbox: FakeNetBox) -> None:
+    make_service(netbox={"cluster_group": None}).check_netbox()
+    assert netbox.tables["cluster-groups"] == {}

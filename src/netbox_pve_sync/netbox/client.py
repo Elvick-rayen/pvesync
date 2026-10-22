@@ -36,6 +36,7 @@ PAGE_SIZE = 200
 
 EP_VMS = "/api/virtualization/virtual-machines/"
 EP_CLUSTERS = "/api/virtualization/clusters/"
+EP_CLUSTER_GROUPS = "/api/virtualization/cluster-groups/"
 EP_VM_INTERFACES = "/api/virtualization/interfaces/"
 EP_IPS = "/api/ipam/ip-addresses/"
 EP_VRFS = "/api/ipam/vrfs/"
@@ -205,6 +206,10 @@ class NetBoxClient:
 
     def cluster(self, name: str) -> dict[str, Any] | None:
         return self.find_one(EP_CLUSTERS, "cluster", name=name)
+
+    def cluster_group(self, name: str) -> dict[str, Any] | None:
+        return (self.find_one(EP_CLUSTER_GROUPS, "cluster group", name=name)
+                or self.find_one(EP_CLUSTER_GROUPS, "cluster group", slug=name))
 
     def tag(self, slug: str) -> dict[str, Any] | None:
         return self.find_one(EP_TAGS, "tag", slug=slug)

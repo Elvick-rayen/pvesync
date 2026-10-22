@@ -10,6 +10,7 @@ netbox:
   token: "${NETBOX_API_TOKEN}"
   cluster: "PVE-Cyprus"                     # <-- must already exist in NetBox (never auto-created)
   site: "inmind.ai"                         # NetBox site set on every VM (name or slug; must exist). Remove to leave sites alone
+  cluster_group: "Proxmox"                  # cluster group set on netbox.cluster (created if missing); null = leave it alone
   verify_ssl: true                          # only matters for https:// URLs
   # ca_bundle: /etc/netbox-pve-sync/netbox-ca.pem
   timeout: 15s
